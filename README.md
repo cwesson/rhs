@@ -31,3 +31,11 @@ access and restores the majority.
 The RHS library is released in the [BDS 3-clause license](LICENSE).  However,
 it also used fec-3.0.1 which is [released by Phil
 Karn](http://www.ka9q.net/code/fec/) under the [LGPL](fec-3.0.1/lesser.txt).
+
+## Future Work
+- Test with larger objects
+- Test with random error injection
+- Find a way to update the ECC data automatically after non-const access
+- Hamming code enums
+- GCC plugin to use RHS library automatically, warnings for implicit comparisons in conditionals
+- Portable code/constant data scrubber (this violates write protections on modern architectures)
