@@ -8,24 +8,43 @@
 #define _RHS_ECCMEMORY_H_
 
 #include "error.h"
+extern "C" {
+#include "fec-3.0.1/fec.h"
+}
 #include <cstdint>
 #include <iostream>
+#include <cstring>
 
 namespace rhs {
 
 /**
- * Simple zero-sum checksum
- * @tparam T Type to checksum over.
+ * Reed-Solomon
+ * @tparam T Type to correct over.
  */
 template<typename T>
-class zerosum {
+class reedsolomon {
 	public:
+		enum {
+			BLOCK_SIZE = 255,
+			DATA_SIZE = 223,
+			_remainder = sizeof(T) % DATA_SIZE,
+			PAD_SIZE = (_remainder == 0) ? 0 : (DATA_SIZE - _remainder),
+			PADDED_SIZE = sizeof(T) + PAD_SIZE,
+			PARITY_SIZE = (PADDED_SIZE / DATA_SIZE) * (BLOCK_SIZE - DATA_SIZE),
+		};
+
 		/**
 		 * Calculate and store checksum.
 		 * @param data Object to checksum.
 		 */
 		void calculate(const T& data) {
-			diff = 0 - _calculate(data);
+			const uint8_t* dptr = reinterpret_cast<const uint8_t*>(&data);
+			uint8_t* pptr = parity;
+			for(size_t rem = PADDED_SIZE; rem > 0; rem -= DATA_SIZE){
+				encode_rs_ccsds(const_cast<uint8_t*>(dptr), pptr, 0);
+				dptr += DATA_SIZE;
+				pptr += (BLOCK_SIZE-DATA_SIZE);
+			}
 		}
 		
 		/**
@@ -34,8 +53,22 @@ class zerosum {
 		 * @return RHS_EOK if checksum verifies, RHS_ENOTVERIFIED otherwise.
 		 */
 		rhs_error_t verify(const T& data) {
-			uint8_t sum = _calculate(data) + diff;
-			return (sum == 0) ? RHS_EOK : RHS_ENOTVERIFIED;
+			rhs_error_t ret = RHS_EOK;
+			const uint8_t* dptr = reinterpret_cast<const uint8_t*>(&data);
+			uint8_t* pptr = parity;
+			for(size_t rem = PADDED_SIZE; rem > 0; rem -= DATA_SIZE){
+				uint8_t block[BLOCK_SIZE];
+				memcpy(block, dptr, DATA_SIZE);
+				memcpy(&block[DATA_SIZE], pptr, PARITY_SIZE);
+				int r = decode_rs_ccsds(block, NULL, 0, 0);
+				if(r != 0){
+					// An error was found
+					ret = RHS_ENOTVERIFIED;
+				}
+				dptr += DATA_SIZE;
+				pptr += (BLOCK_SIZE-DATA_SIZE);
+			}
+			return ret;
 		}
 		
 		/**
@@ -43,22 +76,31 @@ class zerosum {
 		 * @param data Objec to correct.
 		 * @return RHS_EOK if successfully corrected, RHS_ENOTCORRECTED otherwise.
 		 */
-		rhs_error_t correct(const T& data) {
-			(void)data;
-			return RHS_ENOTSUP;
+		rhs_error_t correct(T& data) {
+			rhs_error_t ret = RHS_EOK;
+			uint8_t* dptr = reinterpret_cast<uint8_t*>(&data);
+			uint8_t* pptr = parity;
+			for(size_t rem = PADDED_SIZE; rem > 0; rem -= DATA_SIZE){
+				uint8_t block[BLOCK_SIZE];
+				memcpy(block, dptr, DATA_SIZE);
+				memcpy(&block[DATA_SIZE], pptr, PARITY_SIZE);
+				int r = decode_rs_ccsds(block, NULL, 0, 0);
+				if(r != 0){
+					// An error was found
+					memcpy(dptr, &block, DATA_SIZE);
+				}
+				if(r < 0){
+					// An uncorrectable error was found
+					ret = RHS_ENOTCORRECTED;
+				}
+				dptr += DATA_SIZE;
+				pptr += (BLOCK_SIZE-DATA_SIZE);
+			}
+			return ret;
 		}
 	
 	private:
-		uint8_t _calculate(const T& data) {
-			const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&data);
-			uint8_t sum = 0;
-			for(std::size_t i = 0; i < sizeof(T); ++i){
-				sum += ptr[i];
-			}
-			return sum;
-		}
-		
-		uint8_t diff;
+		uint8_t parity[PARITY_SIZE];
 };
 
 /**
@@ -66,7 +108,7 @@ class zerosum {
  * @tparam T Type of wrapped object.
  * @tparam ECC ECC to use.
  */
-template<typename T, typename ECC=zerosum<T>>
+template<typename T, typename ECC=reedsolomon<T>>
 class ecc_obj {
 	public:
 		/**
@@ -135,6 +177,7 @@ class ecc_obj {
 		 * @note This must be called after the object is intentionally modified.
 		 */
 		void update() {
+			memset(_padding, 0, ECC::PAD_SIZE);
 			_ecc.calculate(_obj);
 		}
 		
@@ -179,6 +222,7 @@ class ecc_obj {
 	
 	private:
 		T _obj;
+		uint8_t _padding[ECC::PAD_SIZE];
 		ECC _ecc;
 };
 

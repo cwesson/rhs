@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.14)
+project(RHS)
+
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_BUILD_FILES_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_BUILD_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin CACHE PATH "Build directory" FORCE)
+set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin CACHE PATH "Build directory" FORCE)
+
+set(CURRENT_TARGET "rhs_test")
+add_executable(${CURRENT_TARGET} "test.cpp" "rhsbool.c" "ccsds_const.c" "fec-3.0.1/init_rs_char.c" "fec-3.0.1/encode_rs_ccsds.c" "fec-3.0.1/decode_rs_ccsds.c" "fec-3.0.1/encode_rs_8.c" "fec-3.0.1/decode_rs_8.c")
+SET_TARGET_PROPERTIES(${CURRENT_TARGET} PROPERTIES COMPILE_FLAGS "-g")

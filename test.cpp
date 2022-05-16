@@ -33,6 +33,7 @@ int main(){
 	
 	std::cout << (*a)._a << "+" << (*a)._b << "=" << a->sum() << std::endl;
 	
+	a->_a = 13;
 	a.update();
 	
 	std::cout << (*a)._a << "+" << (*a)._b << "=" << a->sum() << std::endl;
