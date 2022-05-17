@@ -5,8 +5,8 @@
  * RHS test program.
  */
 
-#include "edacmemory.h"
-#include "rhsbool.h"
+#include "rhs/edacmemory.h"
+#include "rhs/rhsbool.h"
 #include <iostream>
 
 class test {
@@ -29,7 +29,7 @@ int main(){
 	
 	std::cout << (*a)._a << "+" << (*a)._b << "=" << a->sum() << std::endl;
 	
-	a->_a = 13;
+	a->_a = 13; // inject bit error
 	
 	std::cout << (*a)._a << "+" << (*a)._b << "=" << a->sum() << std::endl;
 	
@@ -38,10 +38,10 @@ int main(){
 	
 	std::cout << (*a)._a << "+" << (*a)._b << "=" << a->sum() << std::endl;
 	
-	rhs_bool_t b = rhs_true;
-	if(rhs_is_true(b)){
+	rhs::boolean b(rhs_true);
+	if(b == rhs_true){
 		std::cout << "true" << std::endl;
-	}else if(rhs_is_false(b)){
+	}else if(b == rhs_false){
 		std::cout << "false" << std::endl;
 	}else{
 		std::cout << "undef" << std::endl;

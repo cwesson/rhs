@@ -1,7 +1,7 @@
 /**
  * @file rhs/error.h
  * @author Conlan Wesson
- * @copyright (c) 2021, Conlan Wesson All rights reserved.
+ * @copyright (c) 2022, Conlan Wesson All rights reserved.
  * RHS error codes.
  */
 

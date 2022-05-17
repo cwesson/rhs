@@ -1,7 +1,6 @@
 # Radiation Hardened Software (RHS)
-Proof-of-concept RHS library inspired by [*Expecting the Unexpected - Radiation
-Hardened
-Software*](https://ti.arc.nasa.gov/m/pub-archive/1075h/1075%20(Mehlitz).pdf) by
+Proof-of-concept RHS library inspired by
+[*Expecting the Unexpected - Radiation Hardened Software*](https://ti.arc.nasa.gov/m/pub-archive/1075h/1075%20(Mehlitz).pdf) by
 Mehlitz and Penix.
 
 ## Features
@@ -28,9 +27,9 @@ be requested using the template parameter.  It compares the three copies on any
 access and restores the majority.
 
 ## License
-The RHS library is released in the [BDS 3-clause license](LICENSE).  However,
-it also used fec-3.0.1 which is [released by Phil
-Karn](http://www.ka9q.net/code/fec/) under the [LGPL](fec-3.0.1/lesser.txt).
+The RHS library is released in the [BDS 3-clause license](LICENSE.md).  However,
+it also used fec-3.0.1 which is [released by Phil Karn](http://www.ka9q.net/code/fec/)
+under the [LGPL](fec-3.0.1/lesser.txt).
 
 ## Future Work
 - Test with larger objects

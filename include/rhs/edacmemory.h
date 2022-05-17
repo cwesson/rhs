@@ -1,15 +1,15 @@
 /**
  * @file rhs/edacmemory.h
  * @author Conlan Wesson
- * @copyright (c) 2021, Conlan Wesson All rights reserved.
+ * @copyright (c) 2022, Conlan Wesson All rights reserved.
  */
 
-#ifndef _RHS_ECCMEMORY_H_
-#define _RHS_ECCMEMORY_H_
+#ifndef _RHS_EDACMEMORY_H_
+#define _RHS_EDACMEMORY_H_
 
 #include "error.h"
 extern "C" {
-#include "fec-3.0.1/fec.h"
+#include "fec.h"
 }
 #include <cstdint>
 #include <iostream>
@@ -21,23 +21,23 @@ namespace rhs {
  * Reed-Solomon
  * @tparam T Type to correct over.
  */
-template<typename T>
+template<typename T, typename B>
 class reedsolomon {
 	public:
 		enum {
-			BLOCK_SIZE = 255,
-			DATA_SIZE = 223,
+			BLOCK_SIZE = 255, ///< Encoded block length in bytes.
+			DATA_SIZE = 223,  ///< Message data length in bytes.
 			_remainder = sizeof(T) % DATA_SIZE,
-			PAD_SIZE = (_remainder == 0) ? 0 : (DATA_SIZE - _remainder),
-			PADDED_SIZE = sizeof(T) + PAD_SIZE,
-			PARITY_SIZE = (PADDED_SIZE / DATA_SIZE) * (BLOCK_SIZE - DATA_SIZE),
+			PAD_SIZE = (_remainder == 0) ? 0 : (DATA_SIZE - _remainder),        ///< Padding needed to round to BLOCK_SIZE.
+			PADDED_SIZE = sizeof(T) + PAD_SIZE,                                 ///< Total object size with padding in bytes.
+			PARITY_SIZE = (PADDED_SIZE / DATA_SIZE) * (BLOCK_SIZE - DATA_SIZE), ///< Size of additional parity data in bytes.
 		};
 
 		/**
 		 * Calculate and store checksum.
 		 * @param data Object to checksum.
 		 */
-		void calculate(const T& data) {
+		void calculate(const B& data) {
 			const uint8_t* dptr = reinterpret_cast<const uint8_t*>(&data);
 			uint8_t* pptr = parity;
 			for(size_t rem = PADDED_SIZE; rem > 0; rem -= DATA_SIZE){
@@ -50,9 +50,11 @@ class reedsolomon {
 		/**
 		 * Verify stored checksum.
 		 * @param data Object to checksum.
-		 * @return RHS_EOK if checksum verifies, RHS_ENOTVERIFIED otherwise.
+		 * @return Error code.
+		 * @retval RHS_EOK if checksum verifies.
+		 * @retval RHS_ENOTVERIFIED if checksum does not verify.
 		 */
-		rhs_error_t verify(const T& data) {
+		rhs_error_t verify(const B& data) {
 			rhs_error_t ret = RHS_EOK;
 			const uint8_t* dptr = reinterpret_cast<const uint8_t*>(&data);
 			uint8_t* pptr = parity;
@@ -73,10 +75,13 @@ class reedsolomon {
 		
 		/**
 		 * Correct errors.
-		 * @param data Objec to correct.
-		 * @return RHS_EOK if successfully corrected, RHS_ENOTCORRECTED otherwise.
+		 * @param data Object to correct.
+		 * @return Error code.
+		 * @retval RHS_EOK if checksum verifies.
+		 * @retval RHS_ENOTVERIFIED if checksum does not verify.
+		 * @retval RHS_ENOTCORRECTED if correction fails.
 		 */
-		rhs_error_t correct(T& data) {
+		rhs_error_t correct(B& data) {
 			rhs_error_t ret = RHS_EOK;
 			uint8_t* dptr = reinterpret_cast<uint8_t*>(&data);
 			uint8_t* pptr = parity;
@@ -88,6 +93,9 @@ class reedsolomon {
 				if(r != 0){
 					// An error was found
 					memcpy(dptr, &block, DATA_SIZE);
+					if(ret != RHS_ENOTCORRECTED){
+						ret = RHS_ENOTVERIFIED;
+					}
 				}
 				if(r < 0){
 					// An uncorrectable error was found
@@ -106,16 +114,32 @@ class reedsolomon {
 /**
  * ECC object wrapper.
  * @tparam T Type of wrapped object.
- * @tparam ECC ECC to use.
  */
-template<typename T, typename ECC=reedsolomon<T>>
+template<typename T>
 class ecc_obj {
+	private:
+		struct data_t; // forward declaration
+		typedef reedsolomon<T, data_t> ECC; ///< ECC type
+		
+#pragma pack(push,1)
+		/**
+		 * Struct to keep object and padding together.
+		 */
+		struct data_t {
+			T obj;                          ///< Object being protected.
+			uint8_t padding[ECC::PAD_SIZE]; ///< Padding needed for message data.
+		} _data;
+#pragma pack(pop)
+		static_assert(sizeof(data_t) % ECC::DATA_SIZE == 0, "Object is not padded correctly");
+		
+		ECC _ecc; ///< ECC state.
+		static_assert((sizeof(data_t) + sizeof(ECC)) % ECC::BLOCK_SIZE == 0, "Encoded size is not correct");
+	
 	public:
 		/**
 		 * Constructor.
 		 */
 		ecc_obj() :
-			_obj(),
 			_ecc()
 		{
 			update();
@@ -126,7 +150,7 @@ class ecc_obj {
 		 * @param p Object to move.
 		 */
 		ecc_obj(T&& p) :
-			_obj(p)
+			_data{p, {0}}
 		{
 			update();
 		}
@@ -142,7 +166,7 @@ class ecc_obj {
 		 */
 		const T& operator*() const {
 			verify();
-			return _obj;
+			return _data.obj;
 		}
 		
 		/**
@@ -151,7 +175,7 @@ class ecc_obj {
 		 */
 		T& operator*() {
 			verifyAndCorrect();
-			return _obj;
+			return _data.obj;
 		}
 		
 		/**
@@ -160,7 +184,7 @@ class ecc_obj {
 		 */
 		const T* operator->() const {
 			verify();
-			return &_obj;
+			return &_data.obj;
 		}
 		
 		/**
@@ -169,7 +193,7 @@ class ecc_obj {
 		 */
 		T* operator->() {
 			verifyAndCorrect();
-			return &_obj;
+			return &_data.obj;
 		}
 		
 		/**
@@ -177,16 +201,18 @@ class ecc_obj {
 		 * @note This must be called after the object is intentionally modified.
 		 */
 		void update() {
-			memset(_padding, 0, ECC::PAD_SIZE);
-			_ecc.calculate(_obj);
+			std::memset(_data.padding, 0, ECC::PAD_SIZE);
+			_ecc.calculate(_data);
 		}
 		
 		/**
 		 * Verify the integrity of the wrapped object.
-		 * @return RHS_EOK if object is verified.
+		 * @return Error code.
+		 * @retval RHS_EOK if checksum verifies.
+		 * @retval RHS_ENOTVERIFIED if checksum does not verify.
 		 */
 		rhs_error_t verify() {
-			rhs_error_t ret = _ecc.verify(_obj);
+			rhs_error_t ret = _ecc.verify(_data);
 			if(ret == RHS_ENOTVERIFIED){
 				std::cout << "Verification failed" << std::endl;
 			}
@@ -195,10 +221,13 @@ class ecc_obj {
 		
 		/**
 		 * Correct errors in the wrapped object.
-		 * @return RHS_EOK if object is corrected.
+		 * @return Error code.
+		 * @retval RHS_EOK if checksum verifies.
+		 * @retval RHS_ENOTVERIFIED if checksum does not verify.
+		 * @retval RHS_ENOTCORRECTED if correction fails.
 		 */
 		rhs_error_t correct() {
-			rhs_error_t ret = _ecc.correct(_obj);
+			rhs_error_t ret = _ecc.correct(_data);
 			if(ret == RHS_ENOTCORRECTED){
 				std::cout << "Correction failed" << std::endl;
 			}
@@ -207,7 +236,10 @@ class ecc_obj {
 		
 		/**
 		 * Verify the integrity of the wrapped object and correct errors.
-		 * @return RHS_EOK if object is verified or corrected.
+		 * @return Error code.
+		 * @retval RHS_EOK if checksum verifies.
+		 * @retval RHS_ENOTVERIFIED if checksum does not verify.
+		 * @retval RHS_ENOTCORRECTED if correction fails.
 		 */
 		rhs_error_t verifyAndCorrect() {
 			rhs_error_t ret = verify();
@@ -219,11 +251,6 @@ class ecc_obj {
 			}
 			return ret;
 		}
-	
-	private:
-		T _obj;
-		uint8_t _padding[ECC::PAD_SIZE];
-		ECC _ecc;
 };
 
 /**
@@ -426,9 +453,9 @@ class tmr_obj {
 		}
 	
 	private:
-		T _obj[N];
+		T _obj[N]; ///< N redundant copies.
 };
 
 } // namespace rhs
 
-#endif // _RHS_ECCMEMORY_H_
+#endif // _RHS_EDACMEMORY_H_
