@@ -13,6 +13,7 @@ extern "C" {
 }
 #include <cstdint>
 #include <iostream>
+#include <functional>
 #include <cstring>
 
 namespace rhs {
@@ -32,6 +33,10 @@ class reedsolomon {
 			PADDED_SIZE = sizeof(T) + PAD_SIZE,                                 ///< Total object size with padding in bytes.
 			PARITY_SIZE = (PADDED_SIZE / DATA_SIZE) * (BLOCK_SIZE - DATA_SIZE), ///< Size of additional parity data in bytes.
 		};
+
+		explicit reedsolomon(const B& data) {
+			calculate(data);
+		}
 
 		/**
 		 * Calculate and store checksum.
@@ -128,11 +133,11 @@ class ecc_obj {
 		struct data_t {
 			T obj;                          ///< Object being protected.
 			uint8_t padding[ECC::PAD_SIZE]; ///< Padding needed for message data.
-		} _data;
+		} data;
 #pragma pack(pop)
 		static_assert(sizeof(data_t) % ECC::DATA_SIZE == 0, "Object is not padded correctly");
 		
-		ECC _ecc; ///< ECC state.
+		ECC ecc; ///< ECC state.
 		static_assert((sizeof(data_t) + sizeof(ECC)) % ECC::BLOCK_SIZE == 0, "Encoded size is not correct");
 	
 	public:
@@ -140,20 +145,18 @@ class ecc_obj {
 		 * Constructor.
 		 */
 		ecc_obj() :
-			_ecc()
-		{
-			update();
-		}
+			data{{}, {0}},
+			ecc(data)
+		{}
 		
 		/**
 		 * Move constructor.
 		 * @param p Object to move.
 		 */
-		ecc_obj(T&& p) :
-			_data{p, {0}}
-		{
-			update();
-		}
+		ecc_obj(const T&& p) : // cppcheck-suppress noExplicitConstructor
+			data{p, {0}},
+			ecc(data)
+		{}
 		
 		/**
 		 * Destructor.
@@ -166,7 +169,7 @@ class ecc_obj {
 		 */
 		const T& operator*() const {
 			verify();
-			return _data.obj;
+			return data.obj;
 		}
 		
 		/**
@@ -175,7 +178,7 @@ class ecc_obj {
 		 */
 		T& operator*() {
 			verifyAndCorrect();
-			return _data.obj;
+			return data.obj;
 		}
 		
 		/**
@@ -184,7 +187,7 @@ class ecc_obj {
 		 */
 		const T* operator->() const {
 			verify();
-			return &_data.obj;
+			return &data.obj;
 		}
 		
 		/**
@@ -193,7 +196,7 @@ class ecc_obj {
 		 */
 		T* operator->() {
 			verifyAndCorrect();
-			return &_data.obj;
+			return &data.obj;
 		}
 		
 		/**
@@ -201,8 +204,8 @@ class ecc_obj {
 		 * @note This must be called after the object is intentionally modified.
 		 */
 		void update() {
-			std::memset(_data.padding, 0, ECC::PAD_SIZE);
-			_ecc.calculate(_data);
+			std::memset(data.padding, 0, ECC::PAD_SIZE);
+			ecc.calculate(data);
 		}
 		
 		/**
@@ -212,7 +215,7 @@ class ecc_obj {
 		 * @retval RHS_ENOTVERIFIED if checksum does not verify.
 		 */
 		rhs_error_t verify() {
-			rhs_error_t ret = _ecc.verify(_data);
+			rhs_error_t ret = ecc.verify(data);
 			if(ret == RHS_ENOTVERIFIED){
 				std::cout << "Verification failed" << std::endl;
 			}
@@ -227,7 +230,7 @@ class ecc_obj {
 		 * @retval RHS_ENOTCORRECTED if correction fails.
 		 */
 		rhs_error_t correct() {
-			rhs_error_t ret = _ecc.correct(_data);
+			rhs_error_t ret = ecc.correct(data);
 			if(ret == RHS_ENOTCORRECTED){
 				std::cout << "Correction failed" << std::endl;
 			}
@@ -282,19 +285,9 @@ class tmr_obj {
 		 * Constructor.
 		 * @param p Original object
 		 */
-		tmr_obj(T& p) {
+		tmr_obj(const T& p) {  // cppcheck-suppress noExplicitConstructor
 			for(unsigned int i = 0; i < N; ++i){
-				_obj[i] = p;
-			}
-		}
-		
-		/**
-		 * Constructor.
-		 * @param p Original object
-		 */
-		tmr_obj(T p) {
-			for(unsigned int i = 0; i < N; ++i){
-				_obj[i] = p;
+				obj[i] = p;
 			}
 		}
 		
@@ -304,7 +297,7 @@ class tmr_obj {
 		 */
 		tmr_obj(const tmr_obj<T>& p) {
 			for(unsigned int i = 0; i < N; ++i){
-				_obj[i] = p;
+				obj[i] = p;
 			}
 		}
 		
@@ -319,7 +312,7 @@ class tmr_obj {
 		 * @return Reference to redundant copy i.
 		 */
 		const T& operator[](unsigned int i) const {
-			return _obj[i];
+			return obj[i];
 		}
 		
 		/**
@@ -329,18 +322,18 @@ class tmr_obj {
 		 * @note For testing only.
 		 */
 		T& operator[](unsigned int i) {
-			return _obj[i];
+			return obj[i];
 		}
 		
 		operator T() {
 			verifyAndCorrect();
-			return _obj[0];
+			return obj[0];
 		}
 		
 		tmr_obj<T, N>& operator+=(tmr_obj<T> b){
 			verifyAndCorrect();
 			for(unsigned int i = 0; i < N; ++i){
-				_obj[i] += b;
+				obj[i] += b;
 			}
 			return *this;
 		}
@@ -348,7 +341,7 @@ class tmr_obj {
 		tmr_obj<T, N>& operator-=(tmr_obj<T> b){
 			verifyAndCorrect();
 			for(unsigned int i = 0; i < N; ++i){
-				_obj[i] -= b;
+				obj[i] -= b;
 			}
 			return *this;
 		}
@@ -356,7 +349,7 @@ class tmr_obj {
 		tmr_obj<T, N>& operator*=(tmr_obj<T> b){
 			verifyAndCorrect();
 			for(unsigned int i = 0; i < N; ++i){
-				_obj[i] *= b;
+				obj[i] *= b;
 			}
 			return *this;
 		}
@@ -364,7 +357,7 @@ class tmr_obj {
 		tmr_obj<T, N>& operator/=(tmr_obj<T> b){
 			verifyAndCorrect();
 			for(unsigned int i = 0; i < N; ++i){
-				_obj[i] /= b;
+				obj[i] /= b;
 			}
 			return *this;
 		}
@@ -394,9 +387,9 @@ class tmr_obj {
 		 * @return RHS_EOK if object is verified.
 		 */
 		rhs_error_t verify() {
-			bool ret = (_obj[0] == _obj[1]);
+			bool ret = (obj[0] == obj[1]);
 			for(unsigned int i = 1; i < N; ++i){
-				ret = (_obj[i-1] == _obj[i]) && ret;
+				ret = (obj[i-1] == obj[i]) && ret;
 			}
 			if(!ret){
 				std::cout << "Verification failed" << std::endl;
@@ -415,7 +408,7 @@ class tmr_obj {
 			for(unsigned int c = 0; c < N; ++c){
 				unsigned int counter = 0;
 				for(unsigned int i = c+1; i < N; ++i){
-					if(_obj[c] == _obj[i]){
+					if(obj[c] == obj[i]){
 						++counter;
 					}
 				}
@@ -427,7 +420,7 @@ class tmr_obj {
 			
 			if(most > 0){
 				for(unsigned int i = 0; i < N; ++i){
-					_obj[i] = _obj[corrected];
+					obj[i] = obj[corrected];
 				}
 				
 				return RHS_EOK;
@@ -453,7 +446,7 @@ class tmr_obj {
 		}
 	
 	private:
-		T _obj[N]; ///< N redundant copies.
+		T obj[N]; ///< N redundant copies.
 };
 
 } // namespace rhs
